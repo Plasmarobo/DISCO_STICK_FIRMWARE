@@ -74,6 +74,9 @@ static const uint8_t PROGMEM
     col0data, col1data, col2data, col3data,
     col4data, col5data, col6data, col7data };
 
+byte spectral_energy[] = {0,0,0,0,
+                          0,0,0,0};
+
 void initAudio() {
   uint8_t i, j, nBins, binNum, *data;
 
@@ -174,6 +177,57 @@ uint32_t HSV_to_RGB(float h, float s, float v)
     return c;
 }
 
+void processAudio() {
+   uint8_t  i, x, L, *data, nBins, binNum, weighting, c;
+  uint16_t minLvl, maxLvl;
+  int      level, y, sum;
+  fft_input(capture, bfly_buff);   // Samples -> complex #s
+  samplePos = 0;                   // Reset sample counter
+  ADCSRA |= _BV(ADIE);             // Resume sampling interrupt
+  fft_execute(bfly_buff);          // Process complex data
+  fft_output(bfly_buff, spectrum); // Complex -> spectrum
+
+  // Remove noise and apply EQ levels
+  for(x=0; x<FFT_N/2; x++) {
+    L = pgm_read_byte(&noise[x]);
+    spectrum[x] = (spectrum[x] <= L) ? 0 :
+      (((spectrum[x] - L) * (256L - pgm_read_byte(&eq[x]))) >> 8);
+  }
+
+  // Downsample spectrum output to 8 columns:
+  for(x=0; x<8; x++) {
+    data   = (uint8_t *)pgm_read_word(&colData[x]);
+    nBins  = pgm_read_byte(&data[0]) + 2;
+    binNum = pgm_read_byte(&data[1]);
+    for(sum=0, i=2; i<nBins; i++)
+      sum += spectrum[binNum++] * pgm_read_byte(&data[i]); // Weighted
+    col[x][colCount] = sum / colDiv[x];                    // Average
+    minLvl = maxLvl = col[x][0];
+    for(i=1; i<10; i++) { // Get range of prior 10 frames
+      if(col[x][i] < minLvl)      minLvl = col[x][i];
+      else if(col[x][i] > maxLvl) maxLvl = col[x][i];
+    }
+    // minLvl and maxLvl indicate the extents of the FFT output, used
+    // for vertically scaling the output graph (so it looks interesting
+    // regardless of volume level).  If they're too close together though
+    // (e.g. at very low volume levels) the graph becomes super coarse
+    // and 'jumpy'...so keep some minimum distance between them (this
+    // also lets the graph go to zero when no sound is playing):
+    if((maxLvl - minLvl) < 8) maxLvl = minLvl + 8;
+    minLvlAvg[x] = (minLvlAvg[x] * 7 + minLvl) >> 3; // Dampen min/max levels
+    maxLvlAvg[x] = (maxLvlAvg[x] * 7 + maxLvl) >> 3; // (fake rolling average)
+
+    // Second fixed-point scale based on dynamic min/max levels:
+    level = 10L * (col[x][colCount] - minLvlAvg[x]) /
+      (long)(maxLvlAvg[x] - minLvlAvg[x]);
+
+    // Clip output and convert to byte:
+    if(level < 0L)      spectral_energy[x] = 0;
+    else if(level > 10) spectral_energy[x] = 10; // Allow dot to go a couple pixels off top
+    else                spectral_energy[x] = (uint8_t)level;
+  }
+}
+
 void processAccel() {
   accel.read();
   Serial.print("Accel Values X: ");
@@ -188,11 +242,11 @@ void processAccel() {
   green = (abs(accel.cz) * max_brightness)/4;
 }
 
-uint32_t colorSine(byte offset, float phase) {
+uint32_t colorSine(byte offset, float phase, byte weight) {
   uint32_t c = 0;
-  c |= red * ((uint32_t)abs(sin(phase + (offset * 360.0/nLEDs)))) << 16;
-  c |= green * ((uint32_t)abs(sin(phase + (offset * 360.0/nLEDs)))) << 8;
-  c |= blue * ((uint32_t)abs(sin(phase + (offset * 360.0/nLEDs))));
+  c |= (red * weight)((uint32_t)abs(sin(phase + (offset * 360.0/nLEDs)))) << 16;
+  c |= (green * weight)((uint32_t)abs(sin(phase + (offset * 360.0/nLEDs)))) << 8;
+  c |= (blue * weight)((uint32_t)abs(sin(phase + (offset * 360.0/nLEDs))));
   return c;
 }
 
@@ -236,24 +290,11 @@ void setup() {
 }
 
 void loop() {
-  uint8_t  i, x, L, *data, nBins, binNum, weighting, c;
-  uint16_t minLvl, maxLvl;
-  int      level, y, sum;
+ 
 
   while(ADCSRA & _BV(ADIE)); // Wait for audio sampling to finish
 
-  fft_input(capture, bfly_buff);   // Samples -> complex #s
-  samplePos = 0;                   // Reset sample counter
-  ADCSRA |= _BV(ADIE);             // Resume sampling interrupt
-  fft_execute(bfly_buff);          // Process complex data
-  fft_output(bfly_buff, spectrum); // Complex -> spectrum
-
-  // Remove noise and apply EQ levels
-  for(x=0; x<FFT_N/2; x++) {
-    L = pgm_read_byte(&noise[x]);
-    spectrum[x] = (spectrum[x] <= L) ? 0 :
-      (((spectrum[x] - L) * (256L - pgm_read_byte(&eq[x]))) >> 8);
-  }
+  processAudio();
   processAccel();
   updateDisplay();
 }
