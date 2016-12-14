@@ -111,7 +111,7 @@ const byte ACCEL_INT2_PIN = 3;
 MMA8452Q accel(ACCEL_I2C_ADDR);
 uint32_t motion = 0;
 
-byte nLEDs = 106;
+const byte nLEDs = 106;
 LPD8806 leds = LPD8806(nLEDs); // Using hardware SPI
 byte max_brightness = 128;
 byte red = 0;
@@ -250,16 +250,23 @@ uint32_t colorSine(byte offset, float phase, byte weight) {
   return c;
 }
 
+uint32_t weightColor(byte offset, byte color, float phase, byte magnitude) {
+  return (color * weight)((uint32_t)abs(sin(phase + (offset * 360.0/nLEDs))));
+}
+
 void updateDisplay() {
   // Generate a sine pattern with frequencies based spectral energy
   for(byte i = 0; i < nLEDs/2; ++i) {
     //Symmetrical pattern
+    
     uint32_t color = colorSine(i, 90.0);
     Serial.print("Color at ");
     Serial.print(i);
     Serial.print(": ");
     Serial.print(color, HEX);
     Serial.print("\n");
+    //Add all current sines at pixel X
+    
     leds.setPixelColor(i, color);
     leds.setPixelColor(nLEDs - i - 1, color);
   }
@@ -290,10 +297,7 @@ void setup() {
 }
 
 void loop() {
- 
-
   while(ADCSRA & _BV(ADIE)); // Wait for audio sampling to finish
-
   processAudio();
   processAccel();
   updateDisplay();
