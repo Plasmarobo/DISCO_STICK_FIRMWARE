@@ -11,10 +11,14 @@ RaveCore::RaveCore() {
 }
 
 void RaveCore::Tick() {
-  uint8_t spectra[N_BUCKETS] = audio_.GetSpectra();
-  sines_.SetColor(motion_.GetColor());
+  uint8_t *spectra = audio_.GetSpectra();
+  sines_.SetColor(motion_.GetColor(max_brightness_));
   for(uint8_t i = 0; i < N_BUCKETS; ++i) {
     sines_.Update((i+1)*3000, spectra[i]);
   }
   sines_.Render();
+}
+
+void RaveCore::Sample() {
+  audio_.Sample();
 }

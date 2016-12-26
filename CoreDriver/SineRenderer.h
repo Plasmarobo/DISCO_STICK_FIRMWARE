@@ -9,7 +9,7 @@ class SineRenderer {
     
     void Init(LPD8806 *strip, uint8_t num_buckets);
 
-    void SetColor(uint8_t color[]);
+    void SetColor(uint8_t* color);
     void Update(uint32_t frequency, uint32_t magnitude);
     void Render();
 
@@ -30,8 +30,7 @@ class SineRenderer {
     uint32_t *color_buffer_;
     uint8_t color_[3];
     uint32_t num_buckets_;
-    uint32_t num_subpixels_;
     SineRenderer::Sine *sines_;
-}
+};
 
 #endif // _SINE_RENDERER_H_

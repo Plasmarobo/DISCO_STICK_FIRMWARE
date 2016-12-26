@@ -7,7 +7,7 @@ class MotionProcessor {
   public:
     MotionProcessor();
 
-    uint8_t[3] GetColor();
+    uint8_t* GetColor(const uint8_t &max_brightness);
 
   private:
     const uint8_t ACCEL_I2C_ADDR_ = 0x1D;
@@ -16,6 +16,6 @@ class MotionProcessor {
     MMA8452Q accel_;
     uint32_t motion_;
     uint8_t color_[3];
-}
+};
 
 #endif // _MOTION_PROCESSOR_H_

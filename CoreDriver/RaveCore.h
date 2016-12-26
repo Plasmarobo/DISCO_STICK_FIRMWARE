@@ -12,6 +12,8 @@ class RaveCore {
     RaveCore();
     
     void Tick();
+    //Audio Sample ready handler
+    void Sample();
   private:
     AudioProcessor audio_;
     MotionProcessor motion_;
@@ -20,7 +22,6 @@ class RaveCore {
     
     uint16_t led_count_;
     static const uint8_t max_brightness_;
-
-}
+};
 
 #endif
