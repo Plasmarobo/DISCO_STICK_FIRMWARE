@@ -5,7 +5,9 @@
 
 class SineRenderer {
   public:
-    explicit SineRenderer(LPD8806 *strip, uint8_t num_buckets);
+    explicit SineRenderer();
+    
+    void Init(LPD8806 *strip, uint8_t num_buckets);
 
     void SetColor(uint8_t color[]);
     void Update(uint32_t frequency, uint32_t magnitude);

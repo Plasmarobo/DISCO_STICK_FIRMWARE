@@ -6,7 +6,7 @@ MotionProcessor::MotionProcessor() : accel_(ACCEL_I2C_ADDR_) {
   accel_.init(SCALE_4G, ODR_800);
 }
 
-byte[] MotionProcessor::GetColor(byte max_brightness) {
+uint8_t[3] MotionProcessor::GetColor(byte max_brightness) {
   accel.read();
   color_[0] = (maximum_brightness_ * abs(accel_.cx)) / 4;
   color_[1] = (maximum_brightness_ * abs(accel_.cy)) / 4;

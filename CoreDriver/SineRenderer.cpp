@@ -2,7 +2,7 @@
 #include <LPD8806.h>
 #include <math.h>
 
-SineRenderer::SineRenderer(LPD8806 *strip, uint8_t num_buckets) {
+void SineRenderer::Init(LPD8806 *strip, uint8_t num_buckets) {
   strip_ = strip;
   num_buckets_ = num_buckets;
   sines_ = new SineRenderer::Sine[num_buckets];

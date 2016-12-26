@@ -7,15 +7,15 @@ class MotionProcessor {
   public:
     MotionProcessor();
 
-    byte[] GetColor();
+    uint8_t[3] GetColor();
 
   private:
-    const byte ACCEL_I2C_ADDR_ = 0x1D;
-    const byte ACCEL_INT1_PIN_ = 2;
-    const byte ACCEL_INT2_PIN_ = 3;
+    const uint8_t ACCEL_I2C_ADDR_ = 0x1D;
+    const uint8_t ACCEL_INT1_PIN_ = 2;
+    const uint8_t ACCEL_INT2_PIN_ = 3;
     MMA8452Q accel_;
     uint32_t motion_;
-    byte color_[3];
+    uint8_t color_[3];
 }
 
 #endif // _MOTION_PROCESSOR_H_
