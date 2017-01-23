@@ -1,16 +1,20 @@
 #include <avr/pgmspace.h>
+#include <math.h>
 #include <ffft.h>
 #include <Wire.h>
-#include <math.h>
-#include <LPD8806.h>
-#include <SFE_MMA8452Q.h>
-#include <SPI.h>
+#include <FastLED.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_MMA8451.h>
 
 //STRIP DEFINITIONS
-#define N_LEDS 160
-#define MAX_BRIGHTNESS 127
+#define N_LEDS 32
+#define PIXEL_LIMIT 16
+#define MAX_BRIGHTNESS 255
+#define MAX_DELTA_BRIGHTNESS 250
+#define MIN_BRIGHTNESS 5
+#define CLK_PIN 15
+#define DATA_PIN 16
 
-//AUDIO CORE
 #define ADC_CHANNEL 0
 //FFT_POINTS should be FFT_N/2, or 128/2, 64
 #define FFT_POINTS 64
@@ -123,75 +127,67 @@ void processAudio() {
     // Clip output and convert to byte:
     if(level < 0L)      spectra[x] = 0;
     else if(level > 10) spectra[x] = 10; // Allow dot to go a couple pixels off top
-    else                spectra[x] = (uint8_t)level; 
+    else                spectra[x] = (uint8_t)level;
   }
   if(++spectra_frame_index >= N_FRAME_HISTORY) spectra_frame_index = 0;
 }
 
 //MOTION PROCESSOR
-const uint8_t ACCEL_I2C_ADDR = 0x1D;
-const uint8_t ACCEL_INT1_PIN = 2;
-const uint8_t ACCEL_INT2_PIN = 3;
-MMA8452Q accel(ACCEL_I2C_ADDR);
-uint8_t color[3];
+#define ACCEL_I2C_ADDR 0x1C
+#define ACCEL_INT1_PIN 2
+#define ACCEL_INT2_PIN 3
+Adafruit_MMA8451 accel = Adafruit_MMA8451();
+uint8_t color[3] = { 0, 128, 0};
 
 void processMotion() {
   accel.read();
-  color[0] = (MAX_BRIGHTNESS * abs(accel.cx)) / 4;
-  color[1] = (MAX_BRIGHTNESS * abs(accel.cy)) / 4;
-  color[2] = (MAX_BRIGHTNESS * abs(accel.cz)) / 4;
+  color[0] = MIN_BRIGHTNESS + (MAX_DELTA_BRIGHTNESS * abs(accel.x)) / 8191;
+  color[1] = MIN_BRIGHTNESS + (MAX_DELTA_BRIGHTNESS * abs(accel.y)) / 8191;
+  color[2] = MIN_BRIGHTNESS + (MAX_DELTA_BRIGHTNESS * abs(accel.z)) / 8191;
 }
 
 //SINE RENDERER
 #define FREQUENCY_TO_ANGLE 3000
-#define BASIC_RATE 8
-uint16_t color_buffer[3*(N_LEDS/2)];
-LPD8806 strip(N_LEDS);
+#define BASIC_RATE 2
+CRGB color_buffer[N_LEDS];
 
 void processSines() {
   uint16_t i, j;
-  uint16_t rate = (2 * M_PI * BASIC_RATE) / strip.numPixels();
-  uint16_t maximum = 0;
-  uint8_t pixel_limit = strip.numPixels() / 2;
+  double mag;
+  double rate = (2 * M_PI * BASIC_RATE) / N_LEDS;
+  for(i = 0; i < N_LEDS; ++i) {
+    color_buffer[i] = CRGB::Black;
+  }
+  CRGB new_color;
   for(i = 0; i < N_BUCKETS; ++i) {
-    for(j = 0; j < pixel_limit; ++j) {
-      uint16_t mag = spectra[i] * abs(sin((rate * i) + (M_PI * (i % 2))));
-      if (maximum < mag) { maximum = mag; }
-      color_buffer[j * 3] = (mag * color[0]);
-      color_buffer[(j * 3) + 1] = (mag * color[1]);
-      color_buffer[(j * 3) + 2] = (mag * color[2]);
+    for(j = 0; j < PIXEL_LIMIT; ++j) {  
+      mag = ((double) spectra[i]) * abs(sin((rate * ((double)(i+1)) * ((double)j)) + ((M_PI/2.0) * (i % 2))))/N_BUCKETS;
+      new_color = CRGB(mag * color[0], mag * color[1], mag * color[2]);
+      color_buffer[j] = new_color;
+      color_buffer[N_LEDS-1-j] = new_color;
     }
   }
-  for(i = 0; i < pixel_limit; ++i) {
-    j = strip.numPixels()-1-i;
-    strip.setPixelColor(i,
-                        color_buffer[i] / maximum,
-                        color_buffer[i+1] / maximum,
-                        color_buffer[i+2] / maximum);
-    strip.setPixelColor(j,
-                        color_buffer[i] / maximum,
-                        color_buffer[i+1] / maximum,
-                        color_buffer[i+2] / maximum);
-  }
-  strip.show();
+  FastLED.show();
 }
 
-void setup() {
-  Serial.begin(115200);
-  Serial.print("Boot\n");
-  pinMode(7, OUTPUT);
-  digitalWrite(7, HIGH);
+void setupMotion() {
+  Serial.print("Motion Init\n");
+  if(!accel.begin()) {
+    Serial.print("Error: Accel Init\n");
+  } else {
+    accel.setRange(MMA8451_RANGE_4_G);
+    Serial.print("OK\n");
+  }
+}
 
-  //SETUP MOTION
-  accel.init(SCALE_4G, ODR_800);
-
-  //SETUP AUDIO
+void setupAudio() {
+  Serial.print("Audio Init\n");
   memset(spectra, 0, sizeof(spectra));
   spectra_frame_index = 0;
   uint8_t i, j, nBins, *data;
 
   memset(spectra_history , 0, sizeof(spectra_history));
-  for(i=0; i<8; i++) {
+  for(i=0; i<N_BUCKETS; i++) {
     min_level_average[i] = 0;
     max_level_average[i] = 512;
     data         = (uint8_t *)pgm_read_word(&bucket_filter_indicies[i]);
@@ -201,7 +197,7 @@ void setup() {
   }
 
   // Init ADC free-run mode; f = ( 16MHz/prescaler ) / 13 cycles/conversion 
-  ADMUX  = ADC_CHANNEL; // Channel sel, right-adj, use AREF pin
+  ADMUX  = ADC_CHANNEL;
   ADCSRA = _BV(ADEN)  | // ADC enable
            _BV(ADSC)  | // ADC start
            _BV(ADATE) | // Auto trigger
@@ -212,21 +208,40 @@ void setup() {
   TIMSK0 = 0;                // Timer0 off
 
   sei(); // Enable interrupts
+  Serial.print("OK\n");
 }
 
+void setupStrip() {
+  Serial.print("LED Init\n");
+  FastLED.addLeds<APA102, BGR>(color_buffer, N_LEDS);
+  // Cylon bootup pattern
+  for(int i = 0; i < N_LEDS; i++) {
+    color_buffer[i] = CRGB(0,0,0);
+  }
+  FastLED.show(); 
+  Serial.print("OK\n");
+}
+
+void setup() {
+  Serial.begin(115200);
+  Serial.print("Boot\n");
+
+  setupMotion();
+  setupAudio();
+  setupStrip();
+}
+uint16_t index = 0;
 void loop() {
-  digitalWrite(7, LOW);
-  delay(500);
-  digitalWrite(7, HIGH);
-  delay(500);
   while(ADCSRA & _BV(ADIE));
   processAudio();
-  processMotion();
+  //processMotion();
   processSines();
+  FastLED.show();
 }
 
-ISR(ADC_vect) { // Audio-sampling interrupt
-  static const int16_t noiseThreshold = 4;
+#define noiseThreshold 4
+
+ISR(ADC_vect) { // Audio-sampling interrupt  
   int16_t              sample         = ADC; // 0-1023
   capture_buffer[sample_pos] =
     ((sample > (512-noiseThreshold)) &&
