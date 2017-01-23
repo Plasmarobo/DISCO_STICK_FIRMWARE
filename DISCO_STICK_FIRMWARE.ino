@@ -7,11 +7,11 @@
 #include <Adafruit_MMA8451.h>
 
 //STRIP DEFINITIONS
-#define N_LEDS 32
-#define PIXEL_LIMIT 16
+#define N_LEDS 144
+#define PIXEL_LIMIT 72
 #define MAX_BRIGHTNESS 255
-#define MAX_DELTA_BRIGHTNESS 250
-#define MIN_BRIGHTNESS 5
+#define MAX_DELTA_BRIGHTNESS 100
+#define MIN_BRIGHTNESS 155
 #define CLK_PIN 15
 #define DATA_PIN 16
 
@@ -149,24 +149,27 @@ void processMotion() {
 //SINE RENDERER
 #define FREQUENCY_TO_ANGLE 3000
 #define BASIC_RATE 2
-CRGB color_buffer[N_LEDS];
+CRGBArray<N_LEDS> color_buffer;
+
+//float sine_vector[N_BUCKETS][PIXEL_LIMIT];
 
 void processSines() {
   uint16_t i, j;
   double mag;
-  double rate = (2 * M_PI * BASIC_RATE) / N_LEDS;
+  double rate = (M_PI * BASIC_RATE) / N_LEDS;
   for(i = 0; i < N_LEDS; ++i) {
     color_buffer[i] = CRGB::Black;
   }
   CRGB new_color;
   for(i = 0; i < N_BUCKETS; ++i) {
     for(j = 0; j < PIXEL_LIMIT; ++j) {  
-      mag = ((double) spectra[i]) * abs(sin((rate * ((double)(i+1)) * ((double)j)) + ((M_PI/2.0) * (i % 2))))/N_BUCKETS;
+      mag = ((double) spectra[i] * abs(sin((rate * ((double)(i+1)) * ((double)j)) + ((M_PI/2.0) * (i % 2))))/N_BUCKETS);
+      //mag = ((double) spectra[i]) * sine_vector[i][j];
       new_color = CRGB(mag * color[0], mag * color[1], mag * color[2]);
       color_buffer[j] = new_color;
-      color_buffer[N_LEDS-1-j] = new_color;
     }
   }
+  color_buffer(PIXEL_LIMIT-1, 0) = color_buffer(PIXEL_LIMIT, N_LEDS-1);
   FastLED.show();
 }
 
@@ -211,24 +214,39 @@ void setupAudio() {
   Serial.print("OK\n");
 }
 
+void setupSines() {
+  
+  for(uint16_t i = 0; i < N_BUCKETS; ++i) {
+    for(uint16_t j = 0; j < PIXEL_LIMIT; ++j) {
+      //sine_vector[i][j] = 0;
+    }
+  }
+}
+
 void setupStrip() {
   Serial.print("LED Init\n");
   FastLED.addLeds<APA102, BGR>(color_buffer, N_LEDS);
-  // Cylon bootup pattern
+  for(int i = 0; i < N_LEDS; i++) {
+    color_buffer[i] = CRGB(128,0,0);
+    FastLED.show();
+    color_buffer[i] = 0;
+  }
+  FastLED.show(); 
   for(int i = 0; i < N_LEDS; i++) {
     color_buffer[i] = CRGB(0,0,0);
   }
-  FastLED.show(); 
+  delay(1000);
   Serial.print("OK\n");
 }
 
 void setup() {
   Serial.begin(115200);
   Serial.print("Boot\n");
-
+  setupStrip();
   setupMotion();
   setupAudio();
-  setupStrip();
+  //setupSines();
+  
 }
 uint16_t index = 0;
 void loop() {
